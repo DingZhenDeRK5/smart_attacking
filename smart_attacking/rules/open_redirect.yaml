@@ -1,0 +1,54 @@
+# Open Redirect 检测规则
+name: open_redirect
+description: Open Redirect — 开放重定向漏洞
+severity: medium
+owasp: "A01:2021 — Broken Access Control"
+confidence: 0.85
+enabled: true
+
+endpoint_filter:
+  methods: [GET]
+  param_types: [query]
+  param_name_patterns:
+    - ".*redirect.*"
+    - ".*url.*"
+    - ".*next.*"
+    - ".*return.*"
+    - ".*goto.*"
+    - ".*continue.*"
+    - ".*target.*"
+    - ".*destination.*"
+    - ".*callback.*"
+    - ".*ref.*"
+
+payloads:
+  - value: "https://evil.com"
+    description: "外部域名重定向"
+  - value: "//evil.com"
+    description: "协议相对 URL"
+  - value: "https://evil.com%40localhost"
+    description: "URL 混淆 @localhost"
+  - value: "\\\\evil.com"
+    description: "反斜杠重定向"
+  - value: "https:evil.com"
+    description: "缺少双斜杠"
+  - value: "javascript:alert(1)"
+    description: "javascript 协议"
+  # 更多绕过技术
+  - value: "https://evil.com%23.localdomain.com"
+    description: "Fragment 混淆绕过"
+  - value: "https://evil.com%2Flocalhost"
+    description: "URL 编码斜杠绕过"
+  - value: "http://127.0.0.1%00@evil.com"
+    description: "NULL byte + @ 混淆"
+  - value: "//evil.com%2F..%2Flocalhost"
+    description: "协议相对 + 路径编码绕过"
+  - value: "https:evil.com"
+    description: "单冒号绕过（某些解析器会补全）"
+
+exploit_indicator:
+  patterns: []  # 主要是检查 HTTP 重定向状态码和 Location header
+  status_codes: [301, 302, 303, 307, 308]
+
+expected_normal: "重定向应只允许白名单内的目标 URL"
+reasoning_template: "开放重定向测试: {param_name} 参数 = {payload_value}"

@@ -1,0 +1,32 @@
+# 智攻 (SmartAttack) v3.5 — 前端 Docker 镜像
+# 多阶段构建：Node.js 编译 → Nginx 托管
+
+# ---- Stage 1: 编译 React/Vite 应用 ----
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+COPY smart-attack-ui/package.json smart-attack-ui/package-lock.json* ./
+RUN npm ci --silent 2>/dev/null || npm install --silent
+
+COPY smart-attack-ui/ ./
+RUN npm run build
+
+# ---- Stage 2: Nginx 托管静态文件 ----
+FROM nginx:1.27-alpine
+
+LABEL maintainer="SmartAttack Team"
+LABEL description="SmartAttack frontend dashboard"
+LABEL version="3.3.0"
+
+# 复制构建产物
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# 复制 Nginx 配置
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD wget -q -O /dev/null http://127.0.0.1:80 || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

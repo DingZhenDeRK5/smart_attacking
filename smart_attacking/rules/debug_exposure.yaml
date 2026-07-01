@@ -1,0 +1,72 @@
+# 调试/管理端点暴露检测规则
+# 开发阶段遗留的调试端点在生产环境中暴露，是最常见的信息泄露源
+name: debug_exposure
+description: Debug Endpoint Exposure — 调试/管理端点对外暴露
+severity: medium
+owasp: "API7:2023 — Security Misconfiguration"
+confidence: 0.9
+enabled: true
+
+endpoint_filter:
+  methods: [GET]
+  param_types: [path]
+
+payloads:
+  # 常见调试端点
+  - value: "/debug"
+    description: "Django/Flask debug 端点"
+  - value: "/actuator"
+    description: "Spring Boot Actuator 根路径"
+  - value: "/actuator/health"
+    description: "Spring Boot 健康检查"
+  - value: "/actuator/env"
+    description: "Spring Boot 环境变量（可能含密钥）"
+  - value: "/actuator/mappings"
+    description: "Spring Boot 路由映射"
+  - value: "/actuator/configprops"
+    description: "Spring Boot 配置属性"
+  - value: "/actuator/heapdump"
+    description: "Spring Boot 堆转储（含内存中的密钥）"
+  # 管理面板
+  - value: "/admin"
+    description: "Django/Flask 管理后台"
+  - value: "/api/admin"
+    description: "API 管理入口"
+  - value: "/admin/login"
+    description: "管理后台登录页"
+  - value: "/console"
+    description: "H2/管理控制台"
+  - value: "/swagger-ui.html"
+    description: "Swagger UI（如果不该暴露）"
+  - value: "/api-docs"
+    description: "API 文档端点"
+  # 调试信息
+  - value: "/phpinfo.php"
+    description: "PHP 信息页面"
+  - value: "/info"
+    description: "应用信息端点"
+  - value: "/metrics"
+    description: "Prometheus/metrics 端点"
+  - value: "/.env"
+    description: "环境变量文件泄露"
+  - value: "/.git/config"
+    description: "Git 仓库配置泄露"
+  # 状态页面
+  - value: "/status"
+    description: "服务器状态页面"
+  - value: "/health"
+    description: "健康检查端点"
+
+exploit_indicator:
+  patterns:
+    - "spring"
+    - "actuator"
+    - "health"
+    - "status.*UP"
+    - "heapdump"
+    - "env.*property"
+    - "configprops"
+  status_codes: [200]
+
+expected_normal: "调试和管理端点不应在生产环境对外暴露"
+reasoning_template: "探测未授权的管理端点: {payload_value}"

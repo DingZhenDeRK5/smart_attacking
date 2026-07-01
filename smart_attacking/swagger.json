@@ -1,0 +1,41 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "测试电商系统 API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/users/profile": {
+      "get": {
+        "summary": "获取当前登录用户信息",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": true,
+            "description": "Bearer Token"
+          }
+        ]
+      }
+    },
+    "/api/orders/update": {
+      "post": {
+        "summary": "更新订单收货地址",
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "new_address",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,97 @@
+# SmartAttack — GitHub Action (可发布到 GitHub Marketplace)
+# =================================================================
+# 在你的仓库中直接使用:
+#
+#   - uses: your-org/smartattack@v1
+#     with:
+#       swagger_url: 'https://your-api.example.com/swagger.json'
+#       api_key: ${{ secrets.SMARTA_ATTACK_API_KEY }}
+#
+name: '🛡️ SmartAttack — AI 驱动 API 安全扫描'
+description: '基于大语言模型的自动化 API 渗透测试，支持 Swagger/OpenAPI/Postman/GraphQL 多种格式'
+author: 'SmartAttack Team'
+
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  swagger_url:
+    description: 'Swagger/OpenAPI 文档 URL'
+    required: true
+  api_key:
+    description: 'LLM API Key'
+    required: true
+  endpoint:
+    description: 'SmartAttack 服务地址'
+    required: false
+    default: 'http://localhost:8888'
+  model:
+    description: 'AI 模型名称'
+    required: false
+    default: 'deepseek-chat'
+  fail_on:
+    description: '漏洞严重度阈值 (critical/high/medium/never)'
+    required: false
+    default: 'high'
+  timeout:
+    description: '最大等待时间（秒）'
+    required: false
+    default: '600'
+  output_format:
+    description: '输出格式 (json/pdf)'
+    required: false
+    default: 'json'
+
+outputs:
+  scan_id:
+    description: '扫描 ID'
+  score:
+    description: 'SmartAttack Score (0-100)'
+  vulnerabilities_found:
+    description: '发现的漏洞总数'
+  critical_count:
+    description: '严重漏洞数'
+  high_count:
+    description: '高危漏洞数'
+  report_file:
+    description: '报告文件路径'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Run SmartAttack Scan
+      shell: bash
+      env:
+        SMARTA_ATTACK_API_KEY: ${{ inputs.api_key }}
+      run: |
+        python ${{ github.action_path }}/scripts/run_scan.py \
+          --endpoint "${{ inputs.endpoint }}" \
+          --url "${{ inputs.swagger_url }}" \
+          --model "${{ inputs.model }}" \
+          --output smartattack-result.json \
+          --timeout "${{ inputs.timeout }}" \
+          --format "${{ inputs.output_format }}"
+
+    - name: Analyze Results
+      id: analyze
+      shell: bash
+      run: |
+        python ${{ github.action_path }}/scripts/analyze_result.py \
+          --input smartattack-result.json \
+          --fail-on "${{ inputs.fail_on }}" \
+          --output-report smartattack-report.md
+
+    - name: Upload Report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: smartattack-report
+        path: |
+          smartattack-result.json
+          smartattack-report.md

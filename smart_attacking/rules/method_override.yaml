@@ -1,0 +1,47 @@
+# HTTP 方法覆盖攻击检测规则
+# HTTP Method Override — 通过 X-HTTP-Method-Override 等 Header
+# 将 GET 请求伪装成 DELETE/PUT，绕过防火墙/网关限制
+name: method_override
+description: HTTP Method Override — 方法覆盖绕过访问控制
+severity: medium
+owasp: "API5:2023 — Broken Function Level Authorization"
+confidence: 0.8
+enabled: true
+
+endpoint_filter:
+  methods: [GET, POST]
+  param_types: [header, query]
+
+payloads:
+  # Header-based method override
+  - value: "DELETE"
+    description: "X-HTTP-Method-Override: DELETE — 用 GET 执行删除操作"
+  - value: "PUT"
+    description: "X-HTTP-Method-Override: PUT — 用 GET 执行更新操作"
+  - value: "PATCH"
+    description: "X-HTTP-Method-Override: PATCH — 部分更新绕过"
+  # 多 Header 变体
+  - value: "DELETE (X-HTTP-Method)"
+    description: "X-HTTP-Method header 变体"
+  - value: "DELETE (X-Method-Override)"
+    description: "X-Method-Override header 变体"
+  # Query string-based override
+  - value: "_method=DELETE"
+    description: "URL 参数 _method=DELETE (Laravel/Rails 风格)"
+  - value: "_method=PUT"
+    description: "URL 参数 _method=PUT"
+  - value: "_method=PATCH"
+    description: "URL 参数 _method=PATCH"
+  # 复合攻击
+  - value: "DELETE (Header + _method)"
+    description: "同时使用 Header 和 Query 参数覆盖"
+  # Tunneled method
+  - value: "DELETE (X-HTTP-Method-Override + POST body)"
+    description: "POST body 方法覆盖"
+
+exploit_indicator:
+  patterns: []
+  status_codes: [200, 201, 204]
+
+expected_normal: "HTTP 方法不应被 Header 或 Query 参数覆盖；防火墙/网关应拒绝非标准 Method 头"
+reasoning_template: "HTTP 方法覆盖测试: {description}"

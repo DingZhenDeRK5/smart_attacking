@@ -1,0 +1,16 @@
+# VAmPI Mock — 演示靶场 Docker 镜像
+# 包含多个故意设置的 API 漏洞（BOLA / SQLi / Mass Assignment 等）
+FROM python:3.11-alpine
+
+LABEL maintainer="SmartAttack Team"
+LABEL description="VAmPI Mock API target for SmartAttack demo"
+
+WORKDIR /app
+COPY server.py swagger.json ./
+
+EXPOSE 5000
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD wget -q -O /dev/null http://127.0.0.1:5000/api/swagger.json || exit 1
+
+CMD ["python", "server.py"]

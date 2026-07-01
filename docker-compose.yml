@@ -1,0 +1,163 @@
+# 智攻 (SmartAttack) v3.5 — Docker Compose 一键部署
+# ===================================================
+# 启动全部服务: docker-compose up -d
+# 仅启动后端+前端: docker-compose up -d backend frontend
+# 访问: http://localhost        (前端仪表盘)
+# API:  http://localhost:8888   (后端引擎)
+# 靶场: http://localhost:5000   (测试用 Mock API)
+# 停止: docker-compose down
+#
+# 服务架构:
+#   frontend (Nginx:80)  ← 用户浏览器
+#   backend  (Flask:8888) ← 前端 API 调用 / WebSocket
+#   target   (Mock:5000)  ← 演示靶场（可选）
+
+version: "3.8"
+
+services:
+  # ====================================================================
+  # 后端：AI 渗透扫描引擎 (Flask + WebSocket + ChromaDB)
+  # ====================================================================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    image: smartattack-backend:3.5
+    container_name: smartattack-backend
+    ports:
+      - "8888:8888"   # Flask API + WebSocket
+    environment:
+      # LLM 配置（通过 .env 文件或环境变量注入）
+      - LLM_PROVIDER=${LLM_PROVIDER:-deepseek}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-deepseek-chat}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - SCANNER_HOST=0.0.0.0
+      - SCANNER_PORT=8888
+      - FLASK_DEBUG=${FLASK_DEBUG:-false}
+      - SCANNER_FOLLOWUP=${SCANNER_FOLLOWUP:-true}
+      - SCANNER_MAX_WORKERS=${SCANNER_MAX_WORKERS:-5}
+    volumes:
+      # 持久化存储：扫描历史 + SQLite 数据库 + ChromaDB 知识库
+      - smartattack-storage:/app/smart_attacking/storage
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8888/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - smartattack-net
+
+  # ====================================================================
+  # 前端：React 仪表盘 (Nginx 静态托管)
+  # ====================================================================
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    image: smartattack-frontend:3.5
+    container_name: smartattack-frontend
+    ports:
+      - "80:80"        # 用户访问入口
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:80"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - smartattack-net
+
+  # ====================================================================
+  # Redis：消息队列 + 缓存（Celery broker，可选）
+  # ====================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: smartattack-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    profiles:
+      - celery           # 仅通过 --profile celery 启动
+    networks:
+      - smartattack-net
+
+  # ====================================================================
+  # Celery Worker：异步扫描执行器（可选，横向扩展）
+  # ====================================================================
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    image: smartattack-worker:3.5
+    container_name: smartattack-worker
+    command: celery -A smart_attacking.celery_app worker -Q scan_queue --concurrency=4 -n worker@%h
+    environment:
+      - LLM_PROVIDER=${LLM_PROVIDER:-deepseek}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-deepseek-chat}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - CELERY_ENABLED=true
+    volumes:
+      - smartattack-storage:/app/smart_attacking/storage
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      replicas: 2         # 横向扩展：2 个 Worker 并行处理
+    profiles:
+      - celery
+    networks:
+      - smartattack-net
+
+  # ====================================================================
+  # 靶场：VAmPI Mock API 服务器（演示/测试用）
+  # 包含 BOLA、SQLi、Mass Assignment 等漏洞
+  # ====================================================================
+  target:
+    build:
+      context: ./vampi_mock
+      dockerfile: Dockerfile.mock
+    image: smartattack-target:3.5
+    container_name: smartattack-target
+    ports:
+      - "5000:5000"    # 靶场 API
+    restart: unless-stopped
+    profiles:
+      - demo           # 仅通过 --profile demo 启动
+    networks:
+      - smartattack-net
+
+# ====================================================================
+# 持久化存储卷
+# ====================================================================
+volumes:
+  smartattack-storage:
+    name: smartattack-storage
+    driver: local
+  redis-data:
+    name: smartattack-redis-data
+    driver: local
+
+# ====================================================================
+# 内部网络
+# ====================================================================
+networks:
+  smartattack-net:
+    name: smartattack-net
+    driver: bridge
